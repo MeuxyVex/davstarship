@@ -7,14 +7,17 @@ Le jeu utilise automatiquement les images et les sons placés dans le dossier `a
 ## Fonctionnalités incluses
 
 - Page d'accueil avec bouton pour démarrer le vol.
-- Contrôle du vaisseau uniquement de gauche à droite avec les flèches du clavier.
+- Contrôle du vaisseau dans les quatre directions avec les flèches du clavier.
 - Astéroïdes générés aléatoirement en haut de l'écran.
 - Pièces générées aléatoirement et ajoutées à un compteur visible pendant la partie.
+- Pilules rouges rares qui activent un laser pendant 10 secondes.
 - Vitesse de descente fixe pour les obstacles et les pièces.
 - Difficulté progressive : les astéroïdes apparaissent de plus en plus souvent avec le temps.
 - Détection de collisions :
   - une pièce augmente le compteur ;
-  - un astéroïde termine la partie.
+  - une pilule rouge active le pouvoir laser ;
+  - un astéroïde termine la partie s'il touche directement le vaisseau.
+- Laser temporaire : un rayon rouge part du vaisseau vers le haut de l'écran et détruit les astéroïdes touchés sans supprimer les pièces ni les pilules rouges.
 - Écran de résumé après le crash avec le temps de vol et les pièces récoltées.
 - Emplacements prévus pour une musique d'ambiance et des sons d'effets.
 
@@ -38,8 +41,7 @@ python main.py
 ## Contrôles
 
 - `Entrée` ou `Espace` : démarrer ou recommencer une partie.
-- `Flèche gauche` : déplacer le vaisseau vers la gauche.
-- `Flèche droite` : déplacer le vaisseau vers la droite.
+- `Flèches` : piloter le vaisseau vers la gauche, la droite, le haut ou le bas.
 - `Échap` : quitter le jeu.
 
 ## Assets du jeu
@@ -50,6 +52,7 @@ Le dossier `assets/` peut contenir les images et sons du jeu. Le code cherche au
 - météorite petite : `little`, `small`, `petit` ou `mini` ;
 - météorite moyenne : `mid`, `medium` ou `moyen` ;
 - météorite grande : `big`, `large`, `grand` ou `gros` ;
+- pilule rouge / laser : `pill`, `pilule`, `red_pill`, `powerup` ou `laser` ;
 - son des pièces : `coin`, `piece` ou `pièce` ;
 - son de collision : `explosion`, `collision`, `colision`, `meteor`, `meteorite`, `météor`, `météorite`, `death` ou `crash` ;
 - musique du jeu : `soundtrack`, `music`, `musique`, `space`, `jeu` ou `game`.

@@ -19,6 +19,7 @@ FALL_SPEED = 220.0
 ASTEROID_VARIANT_SIZES = {"little": 34, "mid": 48, "big": 66}
 ASTEROID_SIZE = ASTEROID_VARIANT_SIZES["mid"]
 COIN_SIZE = 28
+RED_PILL_SIZE = 30
 
 
 @dataclass(slots=True)
@@ -74,7 +75,7 @@ def coin_spawn_interval(elapsed_seconds: float) -> float:
 def random_falling_object(
     kind: str, rng: Random, variant: str | None = None
 ) -> FallingObject:
-    """Create a random asteroid or coin at the top of the screen."""
+    """Create a random falling object at the top of the screen."""
     if kind == "asteroid":
         asteroid_variant = variant or rng.choice(tuple(ASTEROID_VARIANT_SIZES))
         if asteroid_variant not in ASTEROID_VARIANT_SIZES:
@@ -83,6 +84,9 @@ def random_falling_object(
         object_variant = asteroid_variant
     elif kind == "coin":
         size = COIN_SIZE
+        object_variant = None
+    elif kind == "red_pill":
+        size = RED_PILL_SIZE
         object_variant = None
     else:
         raise ValueError(f"Unsupported falling object kind: {kind}")
