@@ -24,7 +24,13 @@ from davstarship.game_objects import (
     random_falling_object,
     rects_overlap,
 )
-from davstarship.persistence import load_point_balance, save_point_balance
+from davstarship.persistence import (
+    DEFAULT_PILOT_ID,
+    load_point_balance,
+    load_shop_state,
+    save_point_balance,
+    save_shop_state,
+)
 
 FPS = 60
 ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
@@ -55,6 +61,32 @@ class DavstarshipGame:
         self.objects: list[FallingObject] = []
         self.coins = 0
         self.point_balance = load_point_balance()
+        self.pilots = [
+            {
+                "id": "earth racer",
+                "name": "earth racer",
+                "price": 0,
+                "speed": 360.0,
+            },
+            {
+                "id": "moon racer",
+                "name": "moon racer",
+                "price": 50,
+                "speed": 460.0,
+            },
+            {
+                "id": "sun racer",
+                "name": "sun racer",
+                "price": 120,
+                "speed": 560.0,
+            },
+        ]
+        self.owned_pilots, self.equipped_pilot_id = load_shop_state()
+        if not any(pilot["id"] == self.equipped_pilot_id for pilot in self.pilots):
+            self.equipped_pilot_id = DEFAULT_PILOT_ID
+        self.owned_pilots.add(DEFAULT_PILOT_ID)
+        self.selected_pilot_index = self.pilot_index(self.equipped_pilot_id)
+        self.shop_message = ""
         self.elapsed = 0.0
         self.asteroid_timer = 0.0
         self.coin_timer = 0.0
@@ -204,11 +236,15 @@ class DavstarshipGame:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN:
-                if self.state == "shop" and event.key in {
-                    pygame.K_ESCAPE,
-                    pygame.K_BACKSPACE,
-                }:
-                    self.state = "welcome"
+                if self.state == "shop":
+                    if event.key in {pygame.K_ESCAPE, pygame.K_BACKSPACE}:
+                        self.state = "welcome"
+                    elif event.key == pygame.K_LEFT:
+                        self.select_previous_pilot()
+                    elif event.key == pygame.K_RIGHT:
+                        self.select_next_pilot()
+                    elif event.key in {pygame.K_RETURN, pygame.K_SPACE}:
+                        self.buy_or_equip_selected_pilot()
                 elif event.key == pygame.K_ESCAPE:
                     pygame.quit()
                     sys.exit()
@@ -218,7 +254,16 @@ class DavstarshipGame:
                 }:
                     self.reset()
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if (
+                if self.state == "shop":
+                    if self.previous_pilot_button_rect().collidepoint(event.pos):
+                        self.select_previous_pilot()
+                    elif self.next_pilot_button_rect().collidepoint(event.pos):
+                        self.select_next_pilot()
+                    elif self.shop_action_button_rect().collidepoint(event.pos):
+                        self.buy_or_equip_selected_pilot()
+                    elif self.back_button_rect().collidepoint(event.pos):
+                        self.state = "welcome"
+                elif (
                     self.state in {"welcome", "game_over"}
                     and self.start_button_rect().collidepoint(event.pos)
                 ):
@@ -228,19 +273,105 @@ class DavstarshipGame:
                     and self.shop_button_rect().collidepoint(event.pos)
                 ):
                     self.state = "shop"
-                elif (
-                    self.state == "shop"
-                    and self.back_button_rect().collidepoint(event.pos)
-                ):
-                    self.state = "welcome"
+
+    def pilot_index(self, pilot_id: str) -> int:
+        """Return the index of a pilot by id, or the default pilot index."""
+        for index, pilot in enumerate(self.pilots):
+            if pilot["id"] == pilot_id:
+                return index
+        return 0
+
+    def current_pilot(self) -> dict[str, str | float | int]:
+        """Return the pilot currently selected in the shop."""
+        return self.pilots[self.selected_pilot_index]
+
+    def equipped_pilot(self) -> dict[str, str | float | int]:
+        """Return the currently equipped pilot."""
+        for pilot in self.pilots:
+            if pilot["id"] == self.equipped_pilot_id:
+                return pilot
+        return self.pilots[0]
+
+    def current_player_speed(self) -> float:
+        """Return the gameplay speed of the equipped pilot."""
+        speed = self.equipped_pilot().get("speed", PLAYER_SPEED)
+        return float(speed) if isinstance(speed, (float, int)) else PLAYER_SPEED
+
+    def select_previous_pilot(self) -> None:
+        """Select the previous pilot in the shop carousel."""
+        self.selected_pilot_index = (self.selected_pilot_index - 1) % len(self.pilots)
+        self.shop_message = ""
+
+    def select_next_pilot(self) -> None:
+        """Select the next pilot in the shop carousel."""
+        self.selected_pilot_index = (self.selected_pilot_index + 1) % len(self.pilots)
+        self.shop_message = ""
+
+    def is_pilot_owned(self, pilot_id: str) -> bool:
+        """Return whether the player owns the given pilot."""
+        return pilot_id in self.owned_pilots
+
+    def save_current_shop_state(self) -> None:
+        """Persist the current shop ownership and equipment state."""
+        save_shop_state(self.owned_pilots, self.equipped_pilot_id)
+
+    def buy_or_equip_selected_pilot(self) -> None:
+        """Buy the selected pilot when possible, then equip it."""
+        pilot = self.current_pilot()
+        pilot_id = str(pilot["id"])
+        price = int(pilot["price"])
+        if self.is_pilot_owned(pilot_id):
+            self.equipped_pilot_id = pilot_id
+            self.save_current_shop_state()
+            self.shop_message = f"{pilot['name']} équipé !"
+            return
+
+        if self.point_balance < price:
+            missing_points = price - self.point_balance
+            self.shop_message = f"Il manque {missing_points} points."
+            return
+
+        self.point_balance -= price
+        self.owned_pilots.add(pilot_id)
+        self.equipped_pilot_id = pilot_id
+        save_point_balance(self.point_balance)
+        self.save_current_shop_state()
+        self.shop_message = f"{pilot['name']} acheté et équipé !"
+
+    def selected_pilot_status(self) -> str:
+        """Return the shop status label for the selected pilot."""
+        pilot = self.current_pilot()
+        pilot_id = str(pilot["id"])
+        price = int(pilot["price"])
+        if pilot_id == self.equipped_pilot_id:
+            return "Équipé"
+        if self.is_pilot_owned(pilot_id):
+            return "Possédé"
+        if self.point_balance >= price:
+            return "Acheter"
+        return "Pas assez de points"
+
+    def selected_pilot_action_label(self) -> str:
+        """Return the main button label for the selected pilot."""
+        pilot = self.current_pilot()
+        pilot_id = str(pilot["id"])
+        price = int(pilot["price"])
+        if pilot_id == self.equipped_pilot_id:
+            return "Équipé"
+        if self.is_pilot_owned(pilot_id):
+            return "Équiper"
+        if self.point_balance >= price:
+            return "Acheter"
+        return "Pas assez de points"
 
     def update(self, delta: float) -> None:
         """Update all gameplay objects."""
         keys = pygame.key.get_pressed()
+        player_speed = self.current_player_speed()
         if keys[pygame.K_LEFT]:
-            self.player_x -= PLAYER_SPEED * delta
+            self.player_x -= player_speed * delta
         if keys[pygame.K_RIGHT]:
-            self.player_x += PLAYER_SPEED * delta
+            self.player_x += player_speed * delta
         self.player_x = max(0, min(SCREEN_WIDTH - PLAYER_WIDTH, self.player_x))
 
         self.elapsed += delta
@@ -418,9 +549,21 @@ class DavstarshipGame:
         """Return the main menu shop button rectangle."""
         return pygame.Rect((SCREEN_WIDTH - 300) // 2, 414, 300, 58)
 
+    def previous_pilot_button_rect(self) -> pygame.Rect:
+        """Return the previous-pilot button rectangle."""
+        return pygame.Rect(70, 220, 70, 58)
+
+    def next_pilot_button_rect(self) -> pygame.Rect:
+        """Return the next-pilot button rectangle."""
+        return pygame.Rect(SCREEN_WIDTH - 140, 220, 70, 58)
+
+    def shop_action_button_rect(self) -> pygame.Rect:
+        """Return the buy/equip button rectangle."""
+        return pygame.Rect((SCREEN_WIDTH - 300) // 2, 420, 300, 52)
+
     def back_button_rect(self) -> pygame.Rect:
         """Return the shop back button rectangle."""
-        return pygame.Rect((SCREEN_WIDTH - 260) // 2, 430, 260, 54)
+        return pygame.Rect((SCREEN_WIDTH - 260) // 2, 492, 260, 50)
 
     def draw_button(self, label: str, rect: pygame.Rect | None = None) -> None:
         """Draw a clickable menu button."""
@@ -488,28 +631,148 @@ class DavstarshipGame:
         self.screen.blit(hint, ((SCREEN_WIDTH - hint.get_width()) / 2, 492))
 
     def draw_shop(self) -> None:
-        """Draw the placeholder shop page."""
-        self.draw_center_text(
-            [
-                ("Boutique", self.big_font, (85, 220, 255)),
-                (
-                    f"Solde de points : {self.point_balance}",
-                    self.font,
-                    (140, 255, 170),
-                ),
-                (
-                    "Les améliorations seront codées plus tard.",
-                    self.small_font,
-                    (235, 245, 255),
-                ),
-            ],
-            start_y=170,
+        """Draw the pilot shop page."""
+        pilot = self.current_pilot()
+        status = self.selected_pilot_status()
+        action_label = self.selected_pilot_action_label()
+        price = int(pilot["price"])
+        speed = float(pilot["speed"])
+
+        title = self.big_font.render("Boutique", True, (85, 220, 255))
+        self.screen.blit(title, ((SCREEN_WIDTH - title.get_width()) / 2, 34))
+        balance = self.font.render(
+            f"Solde de points : {self.point_balance}", True, (140, 255, 170)
         )
+        self.screen.blit(balance, ((SCREEN_WIDTH - balance.get_width()) / 2, 96))
+
+        self.draw_pilot_preview(pilot, (SCREEN_WIDTH // 2, 200))
+        self.draw_button("←", self.previous_pilot_button_rect())
+        self.draw_button("→", self.next_pilot_button_rect())
+
+        info_lines = [
+            (str(pilot["name"]).title(), self.font, (245, 255, 255)),
+            (f"Vitesse : {speed:.0f}", self.small_font, (230, 240, 255)),
+            (f"Prix : {price} points", self.small_font, (255, 230, 120)),
+            (f"Statut : {status}", self.small_font, (140, 255, 170)),
+        ]
+        self.draw_center_text(info_lines, start_y=305)
+
+        message_color = (
+            (255, 135, 95)
+            if status == "Pas assez de points"
+            else (180, 255, 190)
+        )
+        if self.shop_message:
+            message = self.small_font.render(self.shop_message, True, message_color)
+            self.screen.blit(message, ((SCREEN_WIDTH - message.get_width()) / 2, 396))
+
+        self.draw_button(action_label, self.shop_action_button_rect())
         self.draw_button("Retour au menu", self.back_button_rect())
         hint = self.small_font.render(
-            "Échap ou Retour arrière : revenir au menu", True, (205, 215, 235)
+            "← / → : changer    Entrée : acheter / équiper    Échap : retour",
+            True,
+            (205, 215, 235),
         )
-        self.screen.blit(hint, ((SCREEN_WIDTH - hint.get_width()) / 2, 502))
+        self.screen.blit(hint, ((SCREEN_WIDTH - hint.get_width()) / 2, 558))
+
+    def draw_pilot_preview(
+        self, pilot: dict[str, str | float | int], center: tuple[int, int]
+    ) -> None:
+        """Draw the selected pilot preview with pygame primitives only."""
+        pilot_id = str(pilot["id"])
+        x, y = center
+
+        if pilot_id == "moon racer":
+            self.draw_astronaut_pilot(
+                center,
+                suit_color=(170, 180, 190),
+                accent_color=(220, 230, 245),
+                visor_color=(105, 150, 185),
+                glow_color=(150, 155, 170),
+            )
+            pygame.draw.circle(self.screen, (215, 215, 205), (x + 46, y - 62), 13)
+            pygame.draw.circle(self.screen, (155, 155, 150), (x + 42, y - 65), 3)
+            pygame.draw.circle(self.screen, (155, 155, 150), (x + 50, y - 58), 2)
+        elif pilot_id == "sun racer":
+            for radius, color in (
+                (78, (120, 55, 0)),
+                (66, (205, 95, 15)),
+                (54, (255, 170, 35)),
+            ):
+                pygame.draw.circle(self.screen, color, center, radius, width=3)
+            self.draw_astronaut_pilot(
+                center,
+                suit_color=(255, 128, 24),
+                accent_color=(255, 222, 70),
+                visor_color=(255, 245, 160),
+                glow_color=(255, 180, 40),
+            )
+            for angle in range(0, 360, 45):
+                ray_x = x + math.cos(math.radians(angle)) * 72
+                ray_y = y + math.sin(math.radians(angle)) * 72
+                pygame.draw.line(
+                    self.screen, (255, 210, 70), center, (ray_x, ray_y), width=2
+                )
+        else:
+            self.draw_astronaut_pilot(
+                center,
+                suit_color=(45, 145, 230),
+                accent_color=(70, 210, 110),
+                visor_color=(110, 215, 255),
+                glow_color=(80, 180, 120),
+            )
+            pygame.draw.arc(
+                self.screen,
+                (70, 210, 110),
+                pygame.Rect(x - 54, y - 72, 108, 108),
+                math.radians(205),
+                math.radians(335),
+                width=4,
+            )
+
+    def draw_astronaut_pilot(
+        self,
+        center: tuple[int, int],
+        suit_color: tuple[int, int, int],
+        accent_color: tuple[int, int, int],
+        visor_color: tuple[int, int, int],
+        glow_color: tuple[int, int, int],
+    ) -> None:
+        """Draw a small pilot body using simple pygame shapes."""
+        x, y = center
+        pygame.draw.circle(self.screen, glow_color, (x, y - 54), 38, width=3)
+        pygame.draw.circle(self.screen, suit_color, (x, y - 54), 31)
+        pygame.draw.circle(self.screen, (230, 240, 255), (x, y - 54), 22)
+        pygame.draw.ellipse(self.screen, visor_color, (x - 17, y - 61, 34, 18))
+        pygame.draw.rect(
+            self.screen, suit_color, (x - 27, y - 26, 54, 68), border_radius=12
+        )
+        pygame.draw.rect(
+            self.screen, accent_color, (x - 12, y - 15, 24, 30), border_radius=6
+        )
+        pygame.draw.rect(
+            self.screen, (20, 35, 55), (x - 7, y - 8, 14, 5), border_radius=2
+        )
+        pygame.draw.line(
+            self.screen, suit_color, (x - 27, y - 8), (x - 55, y + 18), 12
+        )
+        pygame.draw.line(
+            self.screen, suit_color, (x + 27, y - 8), (x + 55, y + 18), 12
+        )
+        pygame.draw.circle(self.screen, accent_color, (x - 58, y + 21), 8)
+        pygame.draw.circle(self.screen, accent_color, (x + 58, y + 21), 8)
+        pygame.draw.rect(
+            self.screen, suit_color, (x - 23, y + 34, 18, 42), border_radius=6
+        )
+        pygame.draw.rect(
+            self.screen, suit_color, (x + 5, y + 34, 18, 42), border_radius=6
+        )
+        pygame.draw.rect(
+            self.screen, accent_color, (x - 27, y + 70, 26, 10), border_radius=4
+        )
+        pygame.draw.rect(
+            self.screen, accent_color, (x + 1, y + 70, 26, 10), border_radius=4
+        )
 
 
 def main() -> None:
