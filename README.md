@@ -51,10 +51,10 @@ Le dossier `assets/` peut contenir les images et sons du jeu. Le code cherche au
 - météorite moyenne : `mid`, `medium` ou `moyen` ;
 - météorite grande : `big`, `large`, `grand` ou `gros` ;
 - son des pièces : `coin`, `piece` ou `pièce` ;
-- son de collision : `collision`, `colision`, `meteor`, `meteorite`, `météor`, `météorite`, `death` ou `crash` ;
-- musique du jeu : `music`, `musique`, `space`, `jeu` ou `game`.
+- son de collision : `explosion`, `collision`, `colision`, `meteor`, `meteorite`, `météor`, `météorite`, `death` ou `crash` ;
+- musique du jeu : `soundtrack`, `music`, `musique`, `space`, `jeu` ou `game`.
 
-Les formats d'images acceptés sont `.png`, `.jpg`, `.jpeg`, `.bmp` et `.gif`. Les formats audio acceptés sont `.wav`, `.ogg` et `.mp3`.
+Les formats d'images acceptés sont `.png`, `.jpg`, `.jpeg`, `.bmp` et `.gif`. Les formats audio acceptés sont `.wav`, `.ogg` et `.mp3`. Par exemple, `soundtrack.mp3` sera joué en boucle au lancement du jeu, et `explosion.mp3` sera joué quand le vaisseau se crash.
 
 ## Tests pour le développement
 

@@ -66,10 +66,12 @@ class DavstarshipGame:
             for _ in range(95)
         ]
         self.images = self._load_images()
-        self.sounds = self._load_sounds()
         self.music_path = self._find_asset(
-            ("music", "musique", "space", "jeu", "game"), AUDIO_EXTENSIONS
+            ("soundtrack", "music", "musique", "space", "jeu", "game"),
+            AUDIO_EXTENSIONS,
         )
+        self.sounds = self._load_sounds()
+        self.start_background_music()
 
     def _asset_files(self, extensions: set[str]) -> list[Path]:
         """Return all files in assets matching the requested extensions."""
@@ -82,8 +84,12 @@ class DavstarshipGame:
         ]
 
     def _find_asset(self, keywords: tuple[str, ...], extensions: set[str]) -> Path | None:
-        """Find an asset whose filename contains one of the given keywords."""
+        """Find an asset whose filename matches or contains a keyword."""
         files = self._asset_files(extensions)
+        for keyword in keywords:
+            for path in files:
+                if path.stem.lower() == keyword:
+                    return path
         for keyword in keywords:
             for path in files:
                 if keyword in path.stem.lower():
@@ -139,6 +145,7 @@ class DavstarshipGame:
         sound_keywords = {
             "coin": ("coin", "piece", "pièce"),
             "death": (
+                "explosion",
                 "collision",
                 "colision",
                 "meteor",
@@ -167,11 +174,17 @@ class DavstarshipGame:
         self.elapsed = 0.0
         self.asteroid_timer = 0.0
         self.coin_timer = 0.0
-        if self.audio_enabled:
-            pygame.mixer.music.stop()
-            if self.music_path is not None:
-                pygame.mixer.music.load(self.music_path)
-                pygame.mixer.music.play(-1)
+        self.start_background_music()
+
+    def start_background_music(self) -> None:
+        """Play soundtrack.mp3 or another detected music asset on loop."""
+        if not self.audio_enabled or self.music_path is None:
+            return
+        try:
+            pygame.mixer.music.load(self.music_path)
+            pygame.mixer.music.play(-1)
+        except pygame.error:
+            self.music_path = None
 
     def run(self) -> None:
         """Run the game loop until the window is closed."""
