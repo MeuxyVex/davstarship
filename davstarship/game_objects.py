@@ -16,7 +16,8 @@ PLAYER_HEIGHT = 46
 PLAYER_Y_MARGIN = 30
 PLAYER_SPEED = 420.0
 FALL_SPEED = 220.0
-ASTEROID_SIZE = 44
+ASTEROID_VARIANT_SIZES = {"little": 34, "mid": 48, "big": 66}
+ASTEROID_SIZE = ASTEROID_VARIANT_SIZES["mid"]
 COIN_SIZE = 28
 
 
@@ -30,6 +31,7 @@ class FallingObject:
     width: int
     height: int
     speed: float = FALL_SPEED
+    variant: str | None = None
 
     @property
     def rect(self) -> tuple[float, float, int, int]:
@@ -69,12 +71,19 @@ def coin_spawn_interval(elapsed_seconds: float) -> float:
     return max(0.85, 1.9 - (elapsed_seconds // 25) * 0.08)
 
 
-def random_falling_object(kind: str, rng: Random) -> FallingObject:
+def random_falling_object(
+    kind: str, rng: Random, variant: str | None = None
+) -> FallingObject:
     """Create a random asteroid or coin at the top of the screen."""
     if kind == "asteroid":
-        size = ASTEROID_SIZE
+        asteroid_variant = variant or rng.choice(tuple(ASTEROID_VARIANT_SIZES))
+        if asteroid_variant not in ASTEROID_VARIANT_SIZES:
+            raise ValueError(f"Unsupported asteroid variant: {asteroid_variant}")
+        size = ASTEROID_VARIANT_SIZES[asteroid_variant]
+        object_variant = asteroid_variant
     elif kind == "coin":
         size = COIN_SIZE
+        object_variant = None
     else:
         raise ValueError(f"Unsupported falling object kind: {kind}")
 
@@ -84,4 +93,5 @@ def random_falling_object(kind: str, rng: Random) -> FallingObject:
         y=-size,
         width=size,
         height=size,
+        variant=object_variant,
     )

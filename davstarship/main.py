@@ -10,6 +10,7 @@ from pathlib import Path
 import pygame
 
 from davstarship.game_objects import (
+    ASTEROID_VARIANT_SIZES,
     COIN_SIZE,
     PLAYER_HEIGHT,
     PLAYER_SPEED,
@@ -26,6 +27,8 @@ from davstarship.game_objects import (
 
 FPS = 60
 ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
+AUDIO_EXTENSIONS = {".wav", ".ogg", ".mp3"}
 
 
 class DavstarshipGame:
@@ -62,17 +65,97 @@ class DavstarshipGame:
             )
             for _ in range(95)
         ]
+        self.images = self._load_images()
         self.sounds = self._load_sounds()
+        self.music_path = self._find_asset(
+            ("music", "musique", "space", "jeu", "game"), AUDIO_EXTENSIONS
+        )
+
+    def _asset_files(self, extensions: set[str]) -> list[Path]:
+        """Return all files in assets matching the requested extensions."""
+        if not ASSET_DIR.exists():
+            return []
+        return [
+            path
+            for path in ASSET_DIR.rglob("*")
+            if path.is_file() and path.suffix.lower() in extensions
+        ]
+
+    def _find_asset(self, keywords: tuple[str, ...], extensions: set[str]) -> Path | None:
+        """Find an asset whose filename contains one of the given keywords."""
+        files = self._asset_files(extensions)
+        for keyword in keywords:
+            for path in files:
+                if keyword in path.stem.lower():
+                    return path
+        return None
+
+    def _load_scaled_image(
+        self, keywords: tuple[str, ...], size: tuple[int, int]
+    ) -> pygame.Surface | None:
+        """Load and scale the first image matching any keyword."""
+        path = self._find_asset(keywords, IMAGE_EXTENSIONS)
+        if path is None:
+            return None
+        try:
+            image = pygame.image.load(path).convert_alpha()
+        except pygame.error:
+            return None
+        return pygame.transform.smoothscale(image, size)
+
+    def _load_images(self) -> dict[str, pygame.Surface | None]:
+        """Load optional image assets and keep drawable fallbacks available."""
+        images: dict[str, pygame.Surface | None] = {
+            "background": self._load_scaled_image(
+                ("background", "space", "fond", "espace"),
+                (SCREEN_WIDTH, SCREEN_HEIGHT),
+            ),
+            "ship": self._load_scaled_image(
+                ("ship", "vaisseau", "davstarship"),
+                (PLAYER_WIDTH, PLAYER_HEIGHT),
+            ),
+            "coin": self._load_scaled_image(
+                ("coin", "piece", "pièce"),
+                (COIN_SIZE, COIN_SIZE),
+            ),
+        }
+        asteroid_keywords = {
+            "little": ("little", "small", "petit", "mini"),
+            "mid": ("mid", "medium", "moyen"),
+            "big": ("big", "large", "grand", "gros"),
+        }
+        for variant, keywords in asteroid_keywords.items():
+            size = ASTEROID_VARIANT_SIZES[variant]
+            images[f"asteroid_{variant}"] = self._load_scaled_image(
+                keywords, (size, size)
+            )
+        return images
 
     def _load_sounds(self) -> dict[str, pygame.mixer.Sound | None]:
-        """Load optional sounds that can be added later in assets/sounds."""
+        """Load optional sounds from the assets folder."""
         sounds: dict[str, pygame.mixer.Sound | None] = {"coin": None, "death": None}
         if not self.audio_enabled:
             return sounds
-        for name in sounds:
-            path = ASSET_DIR / "sounds" / f"{name}.wav"
-            if path.exists():
-                sounds[name] = pygame.mixer.Sound(path)
+        sound_keywords = {
+            "coin": ("coin", "piece", "pièce"),
+            "death": (
+                "collision",
+                "colision",
+                "meteor",
+                "meteorite",
+                "météor",
+                "météorite",
+                "death",
+                "crash",
+            ),
+        }
+        for name, keywords in sound_keywords.items():
+            path = self._find_asset(keywords, AUDIO_EXTENSIONS)
+            if path is not None:
+                try:
+                    sounds[name] = pygame.mixer.Sound(path)
+                except pygame.error:
+                    sounds[name] = None
         return sounds
 
     def reset(self) -> None:
@@ -86,9 +169,8 @@ class DavstarshipGame:
         self.coin_timer = 0.0
         if self.audio_enabled:
             pygame.mixer.music.stop()
-            music_path = ASSET_DIR / "sounds" / "space_music.ogg"
-            if music_path.exists():
-                pygame.mixer.music.load(music_path)
+            if self.music_path is not None:
+                pygame.mixer.music.load(self.music_path)
                 pygame.mixer.music.play(-1)
 
     def run(self) -> None:
@@ -185,7 +267,11 @@ class DavstarshipGame:
         pygame.display.flip()
 
     def draw_space_background(self) -> None:
-        """Draw a static space background until a real image is supplied."""
+        """Draw the space background image or a static fallback."""
+        background = self.images.get("background")
+        if background is not None:
+            self.screen.blit(background, (0, 0))
+            return
         self.screen.fill((3, 6, 24))
         for x, y, radius in self.stars:
             pygame.draw.circle(self.screen, (205, 220, 255), (x, y), radius)
@@ -201,31 +287,55 @@ class DavstarshipGame:
         self.draw_hud()
 
     def draw_ship(self) -> None:
-        """Draw a temporary pixel-art style ship using simple shapes."""
-        x = int(self.player_x)
-        y = int(self.player_y)
+        """Draw the ship image or a temporary pixel-art style fallback."""
+        ship = self.images.get("ship")
+        position = (int(self.player_x), int(self.player_y))
+        if ship is not None:
+            self.screen.blit(ship, position)
+            return
+
+        x, y = position
         pygame.draw.polygon(
             self.screen,
             (70, 210, 255),
-            [(x + PLAYER_WIDTH // 2, y), (x + 8, y + PLAYER_HEIGHT), (x + PLAYER_WIDTH - 8, y + PLAYER_HEIGHT)],
+            [
+                (x + PLAYER_WIDTH // 2, y),
+                (x + 8, y + PLAYER_HEIGHT),
+                (x + PLAYER_WIDTH - 8, y + PLAYER_HEIGHT),
+            ],
         )
         pygame.draw.rect(self.screen, (15, 80, 170), (x + 20, y + 20, 14, 20))
         pygame.draw.rect(self.screen, (255, 135, 35), (x + 12, y + 39, 9, 14))
         pygame.draw.rect(self.screen, (255, 135, 35), (x + 33, y + 39, 9, 14))
 
     def draw_asteroid(self, obj: FallingObject) -> None:
-        """Draw a temporary asteroid placeholder."""
+        """Draw a variant asteroid image or fallback shape."""
+        asteroid = self.images.get(f"asteroid_{obj.variant}")
+        if asteroid is not None:
+            self.screen.blit(asteroid, (int(obj.x), int(obj.y)))
+            return
+
         center = (int(obj.x + obj.width / 2), int(obj.y + obj.height / 2))
         points = []
         for step in range(9):
             angle = (math.tau / 9) * step
             radius = obj.width / 2 * (0.76 + 0.22 * ((step * 5) % 3))
-            points.append((center[0] + math.cos(angle) * radius, center[1] + math.sin(angle) * radius))
+            points.append(
+                (
+                    center[0] + math.cos(angle) * radius,
+                    center[1] + math.sin(angle) * radius,
+                )
+            )
         pygame.draw.polygon(self.screen, (118, 104, 99), points)
         pygame.draw.polygon(self.screen, (68, 61, 65), points, width=3)
 
     def draw_coin(self, obj: FallingObject) -> None:
-        """Draw a temporary coin placeholder."""
+        """Draw the coin image or a temporary fallback."""
+        coin = self.images.get("coin")
+        if coin is not None:
+            self.screen.blit(coin, (int(obj.x), int(obj.y)))
+            return
+
         center = (int(obj.x + COIN_SIZE / 2), int(obj.y + COIN_SIZE / 2))
         pygame.draw.circle(self.screen, (255, 210, 55), center, COIN_SIZE // 2)
         pygame.draw.circle(self.screen, (168, 110, 18), center, COIN_SIZE // 2, width=3)
@@ -240,7 +350,9 @@ class DavstarshipGame:
     def draw_hud(self) -> None:
         """Draw current time and coin count."""
         coin_text = self.font.render(f"Pièces : {self.coins}", True, (255, 230, 100))
-        time_text = self.font.render(f"Temps : {self.elapsed:05.1f}s", True, (235, 245, 255))
+        time_text = self.font.render(
+            f"Temps : {self.elapsed:05.1f}s", True, (235, 245, 255)
+        )
         self.screen.blit(time_text, (18, 16))
         self.screen.blit(coin_text, (SCREEN_WIDTH - coin_text.get_width() - 18, 16))
 
@@ -290,7 +402,9 @@ class DavstarshipGame:
             start_y=150,
         )
         self.draw_button("Démarrer le vol")
-        hint = self.small_font.render("Entrée ou Espace fonctionne aussi", True, (180, 255, 190))
+        hint = self.small_font.render(
+            "Entrée ou Espace fonctionne aussi", True, (180, 255, 190)
+        )
         self.screen.blit(hint, ((SCREEN_WIDTH - hint.get_width()) / 2, 446))
 
     def draw_game_over(self) -> None:

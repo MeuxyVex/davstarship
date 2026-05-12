@@ -3,6 +3,7 @@ from random import Random
 import pytest
 
 from davstarship.game_objects import (
+    ASTEROID_VARIANT_SIZES,
     SCREEN_WIDTH,
     asteroid_spawn_interval,
     coin_spawn_interval,
@@ -31,10 +32,23 @@ def test_coin_spawn_interval_gets_faster_but_is_clamped():
 def test_random_falling_object_starts_above_screen_and_within_width():
     asteroid = random_falling_object("asteroid", Random(4))
     assert asteroid.kind == "asteroid"
+    assert asteroid.variant in ASTEROID_VARIANT_SIZES
+    assert asteroid.width == ASTEROID_VARIANT_SIZES[asteroid.variant]
     assert asteroid.y == -asteroid.height
     assert 8 <= asteroid.x <= SCREEN_WIDTH - asteroid.width - 8
+
+
+def test_random_falling_object_can_force_asteroid_variant():
+    asteroid = random_falling_object("asteroid", Random(4), variant="big")
+    assert asteroid.variant == "big"
+    assert asteroid.width == ASTEROID_VARIANT_SIZES["big"]
 
 
 def test_random_falling_object_rejects_unknown_kind():
     with pytest.raises(ValueError):
         random_falling_object("bonus", Random(4))
+
+
+def test_random_falling_object_rejects_unknown_asteroid_variant():
+    with pytest.raises(ValueError):
+        random_falling_object("asteroid", Random(4), variant="giant")

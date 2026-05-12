@@ -2,7 +2,7 @@
 
 Davstarship est un jeu de vaisseau en 2D inspiré visuellement de Space Invaders. Le joueur pilote un vaisseau spatial en bas de l'écran, évite les astéroïdes qui tombent depuis le haut de l'écran et récupère un maximum de pièces.
 
-Les images et sons définitifs pourront être ajoutés plus tard. Pour l'instant, le jeu utilise des formes simples dessinées avec Pygame afin de rester jouable sans assets externes.
+Le jeu utilise automatiquement les images et les sons placés dans le dossier `assets/`. Si un fichier manque, une forme simple dessinée avec Pygame reste utilisée pour que le jeu puisse quand même se lancer.
 
 ## Fonctionnalités incluses
 
@@ -42,17 +42,19 @@ python main.py
 - `Flèche droite` : déplacer le vaisseau vers la droite.
 - `Échap` : quitter le jeu.
 
-## Ajouter les assets plus tard
+## Assets du jeu
 
-Quand les images et sons seront disponibles, ils pourront être placés dans un dossier `assets/` à la racine du projet. Le code charge déjà ces fichiers audio s'ils existent :
+Le dossier `assets/` peut contenir les images et sons du jeu. Le code cherche automatiquement les fichiers dont le nom contient ces mots-clés, même s'ils sont rangés dans des sous-dossiers :
 
-```text
-assets/sounds/space_music.ogg
-assets/sounds/coin.wav
-assets/sounds/death.wav
-```
+- vaisseau : `ship`, `vaisseau` ou `davstarship` ;
+- météorite petite : `little`, `small`, `petit` ou `mini` ;
+- météorite moyenne : `mid`, `medium` ou `moyen` ;
+- météorite grande : `big`, `large`, `grand` ou `gros` ;
+- son des pièces : `coin`, `piece` ou `pièce` ;
+- son de collision : `collision`, `colision`, `meteor`, `meteorite`, `météor`, `météorite`, `death` ou `crash` ;
+- musique du jeu : `music`, `musique`, `space`, `jeu` ou `game`.
 
-Les graphismes temporaires sont centralisés dans `davstarship/main.py` et pourront être remplacés par des images Pygame.
+Les formats d'images acceptés sont `.png`, `.jpg`, `.jpeg`, `.bmp` et `.gif`. Les formats audio acceptés sont `.wav`, `.ogg` et `.mp3`.
 
 ## Tests pour le développement
 
