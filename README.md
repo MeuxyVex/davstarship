@@ -18,18 +18,21 @@ Les images et sons définitifs pourront être ajoutés plus tard. Pour l'instant
 - Écran de résumé après le crash avec le temps de vol et les pièces récoltées.
 - Emplacements prévus pour une musique d'ambiance et des sons d'effets.
 
-## Installation
+## Installation sur Mac avec Thonny
+
+1. Installe Python et Thonny si ce n'est pas déjà fait.
+2. Ouvre Thonny.
+3. Installe Pygame dans l'interpréteur utilisé par Thonny :
+   - menu `Tools` > `Manage packages...` ;
+   - recherche `pygame` ;
+   - clique sur `Install`.
+4. Ouvre le fichier `main.py` situé à la racine de ce dossier.
+5. Clique sur le bouton vert `Run` de Thonny.
+
+## Lancer le jeu depuis un terminal
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Lancer le jeu
-
-```bash
-python -m davstarship.main
+python main.py
 ```
 
 ## Contrôles
@@ -51,8 +54,10 @@ assets/sounds/death.wav
 
 Les graphismes temporaires sont centralisés dans `davstarship/main.py` et pourront être remplacés par des images Pygame.
 
-## Tests
+## Tests pour le développement
+
+Si tu veux lancer les tests, installe aussi `pytest`, puis lance :
 
 ```bash
-pytest
+python -m pytest tests
 ```
