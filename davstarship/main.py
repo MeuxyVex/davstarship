@@ -24,6 +24,7 @@ from davstarship.game_objects import (
     random_falling_object,
     rects_overlap,
 )
+from davstarship.persistence import load_point_balance, save_point_balance
 
 FPS = 60
 ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
@@ -53,6 +54,7 @@ class DavstarshipGame:
         self.player_y = SCREEN_HEIGHT - PLAYER_HEIGHT - PLAYER_Y_MARGIN
         self.objects: list[FallingObject] = []
         self.coins = 0
+        self.point_balance = load_point_balance()
         self.elapsed = 0.0
         self.asteroid_timer = 0.0
         self.coin_timer = 0.0
@@ -202,20 +204,35 @@ class DavstarshipGame:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
+                if self.state == "shop" and event.key in {
+                    pygame.K_ESCAPE,
+                    pygame.K_BACKSPACE,
+                }:
+                    self.state = "welcome"
+                elif event.key == pygame.K_ESCAPE:
                     pygame.quit()
                     sys.exit()
-                if self.state in {"welcome", "game_over"} and event.key in {
+                elif self.state in {"welcome", "game_over"} and event.key in {
                     pygame.K_RETURN,
                     pygame.K_SPACE,
                 }:
                     self.reset()
-            if (
-                event.type == pygame.MOUSEBUTTONDOWN
-                and self.state in {"welcome", "game_over"}
-                and self.start_button_rect().collidepoint(event.pos)
-            ):
-                self.reset()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if (
+                    self.state in {"welcome", "game_over"}
+                    and self.start_button_rect().collidepoint(event.pos)
+                ):
+                    self.reset()
+                elif (
+                    self.state in {"welcome", "game_over"}
+                    and self.shop_button_rect().collidepoint(event.pos)
+                ):
+                    self.state = "shop"
+                elif (
+                    self.state == "shop"
+                    and self.back_button_rect().collidepoint(event.pos)
+                ):
+                    self.state = "welcome"
 
     def update(self, delta: float) -> None:
         """Update all gameplay objects."""
@@ -247,6 +264,8 @@ class DavstarshipGame:
             if rects_overlap(player_rect, obj.rect):
                 if obj.kind == "coin":
                     self.coins += 1
+                    self.point_balance += 1
+                    save_point_balance(self.point_balance)
                     self.play_sound("coin")
                     continue
                 self.die()
@@ -275,6 +294,8 @@ class DavstarshipGame:
             self.draw_welcome()
         elif self.state == "playing":
             self.draw_gameplay()
+        elif self.state == "shop":
+            self.draw_shop()
         else:
             self.draw_game_over()
         pygame.display.flip()
@@ -363,11 +384,17 @@ class DavstarshipGame:
     def draw_hud(self) -> None:
         """Draw current time and coin count."""
         coin_text = self.font.render(f"Pièces : {self.coins}", True, (255, 230, 100))
+        balance_text = self.font.render(
+            f"Points : {self.point_balance}", True, (140, 255, 170)
+        )
         time_text = self.font.render(
             f"Temps : {self.elapsed:05.1f}s", True, (235, 245, 255)
         )
         self.screen.blit(time_text, (18, 16))
         self.screen.blit(coin_text, (SCREEN_WIDTH - coin_text.get_width() - 18, 16))
+        self.screen.blit(
+            balance_text, (SCREEN_WIDTH - balance_text.get_width() - 18, 52)
+        )
 
     def draw_center_text(
         self,
@@ -385,11 +412,19 @@ class DavstarshipGame:
 
     def start_button_rect(self) -> pygame.Rect:
         """Return the welcome/retry button rectangle."""
-        return pygame.Rect((SCREEN_WIDTH - 300) // 2, 370, 300, 58)
+        return pygame.Rect((SCREEN_WIDTH - 300) // 2, 340, 300, 58)
 
-    def draw_button(self, label: str) -> None:
-        """Draw a clickable start or retry button."""
-        rect = self.start_button_rect()
+    def shop_button_rect(self) -> pygame.Rect:
+        """Return the main menu shop button rectangle."""
+        return pygame.Rect((SCREEN_WIDTH - 300) // 2, 414, 300, 58)
+
+    def back_button_rect(self) -> pygame.Rect:
+        """Return the shop back button rectangle."""
+        return pygame.Rect((SCREEN_WIDTH - 260) // 2, 430, 260, 54)
+
+    def draw_button(self, label: str, rect: pygame.Rect | None = None) -> None:
+        """Draw a clickable menu button."""
+        rect = rect or self.start_button_rect()
         pygame.draw.rect(self.screen, (20, 130, 170), rect, border_radius=14)
         pygame.draw.rect(self.screen, (120, 235, 255), rect, width=3, border_radius=14)
         rendered = self.font.render(label, True, (245, 255, 255))
@@ -412,13 +447,18 @@ class DavstarshipGame:
                 ),
                 ("Flèches gauche/droite : piloter", self.small_font, (205, 215, 235)),
             ],
-            start_y=150,
+            start_y=130,
         )
-        self.draw_button("Démarrer le vol")
+        balance = self.font.render(
+            f"Solde de points : {self.point_balance}", True, (140, 255, 170)
+        )
+        self.screen.blit(balance, ((SCREEN_WIDTH - balance.get_width()) / 2, 276))
+        self.draw_button("Démarrer le vol", self.start_button_rect())
+        self.draw_button("Boutique", self.shop_button_rect())
         hint = self.small_font.render(
             "Entrée ou Espace fonctionne aussi", True, (180, 255, 190)
         )
-        self.screen.blit(hint, ((SCREEN_WIDTH - hint.get_width()) / 2, 446))
+        self.screen.blit(hint, ((SCREEN_WIDTH - hint.get_width()) / 2, 492))
 
     def draw_game_over(self) -> None:
         """Draw the final summary page."""
@@ -434,13 +474,42 @@ class DavstarshipGame:
             ],
             start_y=150,
         )
-        self.draw_button("Recommencer")
+        balance = self.font.render(
+            f"Solde de points : {self.point_balance}", True, (140, 255, 170)
+        )
+        self.screen.blit(balance, ((SCREEN_WIDTH - balance.get_width()) / 2, 292))
+        self.draw_button("Recommencer", self.start_button_rect())
+        self.draw_button("Boutique", self.shop_button_rect())
         hint = self.small_font.render(
             "Entrée / Espace : recommencer    Échap : quitter",
             True,
             (205, 215, 235),
         )
-        self.screen.blit(hint, ((SCREEN_WIDTH - hint.get_width()) / 2, 446))
+        self.screen.blit(hint, ((SCREEN_WIDTH - hint.get_width()) / 2, 492))
+
+    def draw_shop(self) -> None:
+        """Draw the placeholder shop page."""
+        self.draw_center_text(
+            [
+                ("Boutique", self.big_font, (85, 220, 255)),
+                (
+                    f"Solde de points : {self.point_balance}",
+                    self.font,
+                    (140, 255, 170),
+                ),
+                (
+                    "Les améliorations seront codées plus tard.",
+                    self.small_font,
+                    (235, 245, 255),
+                ),
+            ],
+            start_y=170,
+        )
+        self.draw_button("Retour au menu", self.back_button_rect())
+        hint = self.small_font.render(
+            "Échap ou Retour arrière : revenir au menu", True, (205, 215, 235)
+        )
+        self.screen.blit(hint, ((SCREEN_WIDTH - hint.get_width()) / 2, 502))
 
 
 def main() -> None:
