@@ -12,6 +12,7 @@ import pygame
 from davstarship.game_objects import (
     ASTEROID_VARIANT_SIZES,
     COIN_SIZE,
+    RED_PILL_SIZE,
     PLAYER_HEIGHT,
     PLAYER_SPEED,
     PLAYER_WIDTH,
@@ -33,6 +34,10 @@ from davstarship.persistence import (
 )
 
 FPS = 60
+LASER_DURATION_SECONDS = 10.0
+LASER_WIDTH = 10
+RED_PILL_MIN_SPAWN_INTERVAL = 7.0
+RED_PILL_MAX_SPAWN_INTERVAL = 13.0
 ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
 AUDIO_EXTENSIONS = {".wav", ".ogg", ".mp3"}
@@ -90,6 +95,9 @@ class DavstarshipGame:
         self.elapsed = 0.0
         self.asteroid_timer = 0.0
         self.coin_timer = 0.0
+        self.red_pill_timer = 0.0
+        self.next_red_pill_spawn = self.random_red_pill_spawn_interval()
+        self.laser_active_until = 0.0
         self.last_run_time = 0.0
         self.stars = [
             (
@@ -158,6 +166,10 @@ class DavstarshipGame:
                 ("coin", "piece", "pièce"),
                 (COIN_SIZE, COIN_SIZE),
             ),
+            "red_pill": self._load_scaled_image(
+                ("pill", "pilule", "red_pill", "powerup", "laser"),
+                (RED_PILL_SIZE, RED_PILL_SIZE),
+            ),
         }
         asteroid_keywords = {
             "little": ("little", "small", "petit", "mini"),
@@ -199,15 +211,23 @@ class DavstarshipGame:
                     sounds[name] = None
         return sounds
 
+    def random_red_pill_spawn_interval(self) -> float:
+        """Return a rare randomized spawn interval for the red laser pill."""
+        return self.rng.uniform(RED_PILL_MIN_SPAWN_INTERVAL, RED_PILL_MAX_SPAWN_INTERVAL)
+
     def reset(self) -> None:
         """Start a fresh flight."""
         self.state = "playing"
         self.player_x = (SCREEN_WIDTH - PLAYER_WIDTH) / 2
+        self.player_y = SCREEN_HEIGHT - PLAYER_HEIGHT - PLAYER_Y_MARGIN
         self.objects.clear()
         self.coins = 0
         self.elapsed = 0.0
         self.asteroid_timer = 0.0
         self.coin_timer = 0.0
+        self.red_pill_timer = 0.0
+        self.next_red_pill_spawn = self.random_red_pill_spawn_interval()
+        self.laser_active_until = 0.0
         self.start_background_music()
 
     def start_background_music(self) -> None:
@@ -297,6 +317,19 @@ class DavstarshipGame:
         speed = self.equipped_pilot().get("speed", PLAYER_SPEED)
         return float(speed) if isinstance(speed, (float, int)) else PLAYER_SPEED
 
+    def laser_is_active(self) -> bool:
+        """Return whether the temporary laser power is currently active."""
+        return self.laser_time_remaining() > 0
+
+    def laser_time_remaining(self) -> float:
+        """Return the remaining laser time in seconds."""
+        return max(0.0, self.laser_active_until - self.elapsed)
+
+    def laser_rect(self) -> tuple[float, float, int, float]:
+        """Return the thin vertical laser collision rectangle."""
+        laser_x = self.player_x + PLAYER_WIDTH / 2 - LASER_WIDTH / 2
+        return (laser_x, 0.0, LASER_WIDTH, self.player_y)
+
     def select_previous_pilot(self) -> None:
         """Select the previous pilot in the shop carousel."""
         self.selected_pilot_index = (self.selected_pilot_index - 1) % len(self.pilots)
@@ -372,11 +405,18 @@ class DavstarshipGame:
             self.player_x -= player_speed * delta
         if keys[pygame.K_RIGHT]:
             self.player_x += player_speed * delta
+        if keys[pygame.K_UP]:
+            self.player_y -= player_speed * delta
+        if keys[pygame.K_DOWN]:
+            self.player_y += player_speed * delta
         self.player_x = max(0, min(SCREEN_WIDTH - PLAYER_WIDTH, self.player_x))
+        max_player_y = SCREEN_HEIGHT - PLAYER_HEIGHT - PLAYER_Y_MARGIN
+        self.player_y = max(0, min(max_player_y, self.player_y))
 
         self.elapsed += delta
         self.asteroid_timer += delta
         self.coin_timer += delta
+        self.red_pill_timer += delta
 
         if self.asteroid_timer >= asteroid_spawn_interval(self.elapsed):
             self.objects.append(random_falling_object("asteroid", self.rng))
@@ -386,17 +426,33 @@ class DavstarshipGame:
             self.objects.append(random_falling_object("coin", self.rng))
             self.coin_timer = 0.0
 
+        if self.red_pill_timer >= self.next_red_pill_spawn:
+            self.objects.append(random_falling_object("red_pill", self.rng))
+            self.red_pill_timer = 0.0
+            self.next_red_pill_spawn = self.random_red_pill_spawn_interval()
+
         player_rect = (self.player_x, self.player_y, PLAYER_WIDTH, PLAYER_HEIGHT)
+        laser_rect = self.laser_rect() if self.laser_is_active() else None
         remaining: list[FallingObject] = []
         for obj in self.objects:
             obj.update(delta)
             if obj.is_off_screen():
+                continue
+            if (
+                obj.kind == "asteroid"
+                and laser_rect is not None
+                and rects_overlap(laser_rect, obj.rect)
+            ):
                 continue
             if rects_overlap(player_rect, obj.rect):
                 if obj.kind == "coin":
                     self.coins += 1
                     self.point_balance += 1
                     save_point_balance(self.point_balance)
+                    self.play_sound("coin")
+                    continue
+                if obj.kind == "red_pill":
+                    self.laser_active_until = self.elapsed + LASER_DURATION_SECONDS
                     self.play_sound("coin")
                     continue
                 self.die()
@@ -446,8 +502,12 @@ class DavstarshipGame:
         for obj in self.objects:
             if obj.kind == "asteroid":
                 self.draw_asteroid(obj)
+            elif obj.kind == "red_pill":
+                self.draw_red_pill(obj)
             else:
                 self.draw_coin(obj)
+        if self.laser_is_active():
+            self.draw_laser()
         self.draw_ship()
         self.draw_hud()
 
@@ -494,6 +554,38 @@ class DavstarshipGame:
         pygame.draw.polygon(self.screen, (118, 104, 99), points)
         pygame.draw.polygon(self.screen, (68, 61, 65), points, width=3)
 
+    def draw_red_pill(self, obj: FallingObject) -> None:
+        """Draw the red laser pill image or a fallback capsule."""
+        pill = self.images.get("red_pill")
+        if pill is not None:
+            self.screen.blit(pill, (int(obj.x), int(obj.y)))
+            return
+
+        rect = pygame.Rect(int(obj.x), int(obj.y), obj.width, obj.height)
+        pygame.draw.ellipse(self.screen, (255, 55, 55), rect)
+        pygame.draw.ellipse(self.screen, (130, 20, 35), rect, width=3)
+        pygame.draw.line(
+            self.screen,
+            (255, 180, 180),
+            (rect.left + obj.width // 3, rect.top + 5),
+            (rect.left + obj.width // 3, rect.bottom - 5),
+            width=3,
+        )
+        pygame.draw.circle(
+            self.screen,
+            (255, 230, 230),
+            (rect.left + obj.width // 3, rect.top + obj.height // 3),
+            3,
+        )
+
+    def draw_laser(self) -> None:
+        """Draw the active laser beam from the ship to the top of the screen."""
+        laser_x, laser_y, laser_width, laser_height = self.laser_rect()
+        rect = pygame.Rect(int(laser_x), int(laser_y), laser_width, int(laser_height))
+        pygame.draw.rect(self.screen, (255, 35, 35), rect)
+        glow_rect = rect.inflate(10, 0)
+        pygame.draw.rect(self.screen, (255, 85, 85), glow_rect, width=2)
+
     def draw_coin(self, obj: FallingObject) -> None:
         """Draw the coin image or a temporary fallback."""
         coin = self.images.get("coin")
@@ -526,6 +618,11 @@ class DavstarshipGame:
         self.screen.blit(
             balance_text, (SCREEN_WIDTH - balance_text.get_width() - 18, 52)
         )
+        if self.laser_is_active():
+            laser_text = self.font.render(
+                f"Laser : {self.laser_time_remaining():.1f}s", True, (255, 85, 85)
+            )
+            self.screen.blit(laser_text, (18, 52))
 
     def draw_center_text(
         self,
@@ -584,11 +681,11 @@ class DavstarshipGame:
                     (230, 240, 255),
                 ),
                 (
-                    "Récupère les pièces et évite les astéroïdes",
+                    "Récupère les pièces, les pilules rouges et évite les astéroïdes",
                     self.small_font,
                     (255, 230, 120),
                 ),
-                ("Flèches gauche/droite : piloter", self.small_font, (205, 215, 235)),
+                ("Flèches : piloter le vaisseau", self.small_font, (205, 215, 235)),
             ],
             start_y=130,
         )
